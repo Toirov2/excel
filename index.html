@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XLSXpert</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Handsontable CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable@latest/dist/handsontable.full.min.css">
+  <!-- jsPDF for PDF export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- SheetJS for Excel import/export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+      min-height: 100vh;
+      font-family: 'Inter', sans-serif;
+    }
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    #hot {
+      height: 900px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+    .image-canvas {
+      width: 100%;
+      height: 100%;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      cursor: crosshair;
+    }
+    .image-preview {
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      transition: transform 0.3s ease;
+    }
+    .image-preview:hover {
+      transform: scale(1.05);
+    }
+    #imageContainer {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .image-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+    .image-text {
+      position: absolute;
+      color: #ffffff;
+      font-size: 18px;
+      font-weight: 600;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.4);
+      padding: 8px 12px;
+      border-radius: 6px;
+    }
+    #message {
+      display: none;
+      background: #fef3c7;
+      color: #78350f;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 16px;
+      font-weight: 500;
+    }
+    #imageModal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    #modalImage {
+      max-width: 90%;
+      max-height: 90%;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    .fullscreen-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 999;
+      display: none;
+    }
+    .control-panel {
+      background: rgba(255, 255, 255, 0.95);
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    button {
+      transition: all 0.3s ease;
+      transform: scale(1);
+    }
+    button:hover {
+      transform: scale(1.05);
+    }
+    .tab-content {
+      transition: opacity 0.3s ease;
+    }
+    .tab-content.hidden {
+      opacity: 0;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container mx-auto">
+    <h1 class="text-5xl font-extrabold text-center mb-10 text-white drop-shadow-lg">XLSXpert</h1>
+
+    <!-- Tab Buttons -->
+    <div class="flex mb-6 gap-3 justify-center">
+      <button id="excelTabBtn" onclick="showTab('excel-tab')" class="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition duration-200">Excel</button>
+      <button id="imageTabBtn" onclick="showTab('image-tab')" class="bg-purple-600 text-white p-3 rounded-lg hover:bg-purple-700 transition duration-200">IMG</button>
+    </div>
+
+    <!-- Message for Notifications -->
+    <div id="message" class="hidden"></div>
+
+    <!-- Excel Tab -->
+    <div id="excel-tab" class="tab-content">
+      <div class="control-panel">
+        <input type="file" id="fileUpload" accept=".xlsx,.csv" class="p-3 border rounded-lg bg-white text-gray-800">
+        <button onclick="addCalculator()" class="bg-yellow-600 text-white p-3 rounded-lg hover:bg-yellow-700">Добавить калькулятор</button>
+        <button onclick="exportToExcel()" class="bg-green-600 text-white p-3 rounded-lg hover:bg-green-700">Сохранить как XLSX</button>
+        <button onclick="calculateStats()" class="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700">Рассчитать статистику</button>
+        <button onclick="undo()" class="bg-gray-600 text-white p-3 rounded-lg hover:bg-gray-700">Отменить</button>
+        <button onclick="redo()" class="bg-gray-600 text-white p-3 rounded-lg hover:bg-gray-700">Повторить</button>
+        <button onclick="clearTable()" class="bg-red-600 text-white p-3 rounded-lg hover:bg-red-700">Очистить таблицу</button>
+        <button onclick="addRow()" class="bg-indigo-600 text-white p-3 rounded-lg hover:bg-indigo-700">Добавить строку</button>
+        <button onclick="addColumn()" class="bg-indigo-600 text-white p-3 rounded-lg hover:bg-indigo-700">Добавить столбец</button>
+        <input type="text" id="searchInput" placeholder="Поиск..." class="p-3 border rounded-lg bg-white text-gray-800">
+        <button onclick="searchTable()" class="bg-teal-600 text-white p-3 rounded-lg hover:bg-teal-700">Найти</button>
+      </div>
+      <div id="hot"></div>
+      <div id="stats" class="mt-4 p-4 bg-white border rounded-lg shadow-md hidden">
+        <h2 class="text-xl font-bold">Статистика</h2>
+        <p id="sum"></p>
+        <p id="average"></p>
+        <p id="min"></p>
+        <p id="max"></p>
+      </div>
+    </div>
+
+    <!-- Image Tab -->
+    <div id="image-tab" class="tab-content hidden">
+      <div class="control-panel">
+        <button onclick="document.getElementById('imageUpload').click()" class="bg-indigo-600 text-white p-3 rounded-lg hover:bg-indigo-700">Загрузить изображение</button>
+        <input type="file" id="imageUpload" accept="image/*" style="display:none" multiple>
+        <input type="text" id="canvasTextInput" placeholder="Введите текст для изображения" class="p-3 border rounded-lg bg-white text-gray-800">
+        <button onclick="enableTextMode()" class="bg-purple-600 text-white p-3 rounded-lg hover:bg-purple-700">Наложить текст</button>
+        <button onclick="enableDrawMode()" class="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700">Рисовать</button>
+        <button onclick="exportToPDF()" class="bg-green-600 text-white p-3 rounded-lg hover:bg-green-700">Сохранить как PDF</button>
+        <button onclick="shareToTelegram()" class="bg-teal-600 text-white p-3 rounded-lg hover:bg-teal-700">Отправить в Telegram</button>
+        <button onclick="deleteImages()" class="bg-red-600 text-white p-3 rounded-lg hover:bg-red-700">Удалить изображения</button>
+      </div>
+      <div id="imageContainer"></div>
+    </div>
+
+    <!-- Modal for Enlarged Image -->
+    <div id="imageModal" class="hidden">
+      <img id="modalImage" src="" alt="Увеличенное изображение">
+    </div>
+  </div>
+
+  <!-- Handsontable JS -->
+  <script src="https://cdn.jsdelivr.net/npm/handsontable@latest/dist/handsontable.full.min.js"></script>
+  <script>
+    // Initialize Handsontable
+    let hot;
+    function initializeHandsontable() {
+      hot = new Handsontable(document.getElementById('hot'), {
+        data: Handsontable.helper.createEmptySpreadsheetData(500, 10),
+        rowHeaders: true,
+        colHeaders: ['Имя', 'Возраст', 'Город', 'Доход', 'A', 'B', 'C', 'D', 'E', 'F'],
+        filters: true,
+        dropdownMenu: true,
+        contextMenu: true,
+        formulas: { engine: 'HyperFormula' },
+        licenseKey: 'non-commercial-and-evaluation',
+        stretchH: 'all',
+        height: '900px',
+        minRows: 500,
+        minCols: 10,
+        undo: true,
+        outsideClickDeselects: false,
+        comments: true,
+        cell: [
+          { row: 0, col: 0, comment: { value: 'Введите данные здесь' } }
+        ],
+        cells(row, col) {
+          const cellProperties = {};
+          if (col === 2) {
+            cellProperties.renderer = function(instance, td, row, col, prop, value, cellProperties) {
+              Handsontable.renderers.TextRenderer.apply(this, arguments);
+              td.style.fontFamily = 'Inter';
+              td.style.textAlign = 'center';
+              td.style.border = '1px solid #ccc';
+              td.style.background = '#f9fafb';
+            };
+          }
+          return cellProperties;
+        },
+        afterChange: function(changes, source) {
+          if (source === 'edit' && changes) {
+            changes.forEach(([row, col]) => {
+              if (col === 3) {
+                hot.setDataAtCell(row, 4, `=IFERROR(${hot.getColHeader(3)}${row + 1} * 0.1, 0)`);
+              }
+            });
+          }
+        }
+      });
+    }
+
+    // Tab switching
+    function showTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
+      document.getElementById(tabId).classList.remove('hidden');
+      if (tabId === 'image-tab') {
+        initializeCanvas();
+        renderFullscreenCanvas();
+        addTextEventListener();
+        addDrawEventListeners();
+        if (fullscreenCanvas) fullscreenCanvas.style.display = 'block';
+      } else {
+        if (fullscreenCanvas) {
+          fullscreenCanvas.getContext('2d').clearRect(0, 0, fullscreenCanvas.width, fullscreenCanvas.height);
+          fullscreenCanvas.style.display = 'none';
+        }
+        removeTextEventListener();
+        removeDrawEventListeners();
+        if (hot) hot.render(); // Ensure Handsontable re-renders when switching back
+      }
+      document.getElementById('excelTabBtn').classList.toggle('bg-blue-600', tabId === 'excel-tab');
+      document.getElementById('excelTabBtn').classList.toggle('bg-blue-800', tabId !== 'excel-tab');
+      document.getElementById('imageTabBtn').classList.toggle('bg-purple-600', tabId === 'image-tab');
+      document.getElementById('imageTabBtn').classList.toggle('bg-purple-800', tabId !== 'image-tab');
+    }
+
+    // Excel functionalities
+    function addCalculator() {
+      const percent = prompt('Введите процент для расчета (например, 10 для 10%):', 10);
+      if (percent) {
+        const numPercent = parseFloat(percent) / 100;
+        if (!isNaN(numPercent)) {
+          hot.alter('insert_col', 4);
+          hot.setColHeader(4, `% (${percent}%)`);
+          hot.getData().forEach((row, index) => {
+            const income = parseFloat(row[3]) || 0;
+            hot.setDataAtCell(index, 4, `=IFERROR(${income} * ${numPercent}, 0)`);
+          });
+          showMessage(`Калькулятор добавлен с процентом ${percent}%.`);
+        } else {
+          showMessage('Введите корректный процент!');
+        }
+      }
+    }
+
+    function exportToExcel() {
+      const data = hot.getSourceData();
+      const ws = XLSX.utils.aoa_to_sheet([hot.getColHeader(), ...data]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'SheetWizard');
+      XLSX.writeFile(wb, 'SheetWizard.xlsx');
+      showMessage('Таблица сохранена как XLSX.');
+    }
+
+    function calculateStats() {
+      const data = hot.getData().map(row => parseFloat(row[3])).filter(val => !isNaN(val));
+      if (data.length === 0) {
+        showMessage('В столбце дохода нет числовых данных!');
+        return;
+      }
+      const sum = data.reduce((a, b) => a + b, 0);
+      const avg = sum / data.length;
+      const min = Math.min(...data);
+      const max = Math.max(...data);
+      document.getElementById('stats').classList.remove('hidden');
+      document.getElementById('sum').textContent = `Сумма: ${sum.toFixed(2)}`;
+      document.getElementById('average').textContent = `Среднее: ${avg.toFixed(2)}`;
+      document.getElementById('min').textContent = `Минимум: ${min.toFixed(2)}`;
+      document.getElementById('max').textContent = `Максимум: ${max.toFixed(2)}`;
+      showMessage('Статистика рассчитана.');
+    }
+
+    function undo() {
+      hot.undo();
+      showMessage('Действие отменено.');
+    }
+
+    function redo() {
+      hot.redo();
+      showMessage('Действие повторено.');
+    }
+
+    function clearTable() {
+      hot.loadData(Handsontable.helper.createEmptySpreadsheetData(500, 10));
+      hot.setColHeader(['Имя', 'Возраст', 'Город', 'Доход', 'A', 'B', 'C', 'D', 'E', 'F']);
+      document.getElementById('stats').classList.add('hidden');
+      showMessage('Таблица очищена.');
+    }
+
+    function addRow() {
+      hot.alter('insert_row', hot.countRows());
+      showMessage('Строка добавлена.');
+    }
+
+    function addColumn() {
+      hot.alter('insert_col', hot.countCols());
+      showMessage('Столбец добавлен.');
+    }
+
+    function searchTable() {
+      const query = document.getElementById('searchInput').value;
+      if (!query) {
+        showMessage('Введите запрос для поиска!');
+        return;
+      }
+      hot.search.query(query);
+      hot.render();
+      showMessage(`Поиск выполнен для: ${query}`);
+    }
+
+    document.getElementById('fileUpload').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          hot.loadData(json);
+          showMessage('Таблица импортирована из файла.');
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    });
+
+    // Image handling
+    let images = [];
+    let textMode = false;
+    let drawMode = false;
+    let isDrawing = false;
+    let fullscreenCanvas = null;
+    let currentPath = [];
+
+    function initializeCanvas() {
+      if (!fullscreenCanvas) {
+        fullscreenCanvas = document.createElement('canvas');
+        fullscreenCanvas.className = 'fullscreen-canvas';
+        document.body.appendChild(fullscreenCanvas);
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+      }
+    }
+
+    function resizeCanvas() {
+      if (fullscreenCanvas) {
+        fullscreenCanvas.width = window.innerWidth;
+        fullscreenCanvas.height = window.innerHeight;
+      }
+    }
+
+    document.getElementById('imageUpload').addEventListener('change', function(e) {
+      const files = e.target.files;
+      if (files) {
+        initializeCanvas();
+        Array.from(files).forEach(file => {
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            const imageData = e.target.result;
+            images.push({ data: imageData, text: '', textX: 10, textY: 10, drawPaths: [] });
+            renderImages();
+            renderFullscreenCanvas();
+            showMessage('Изображение добавлено.');
+          };
+          reader.readAsDataURL(file);
+        });
+        e.target.value = '';
+      }
+    });
+
+    function renderImages() {
+      const container = document.getElementById('imageContainer');
+      container.innerHTML = '';
+      images.forEach((img, index) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'image-wrapper';
+        const canvas = document.createElement('canvas');
+        canvas.className = 'image-canvas';
+        canvas.width = 300;
+        canvas.height = 150;
+        const ctx = canvas.getContext('2d');
+        const imgObj = new Image();
+        imgObj.src = img.data;
+        imgObj.onload = () => {
+          ctx.drawImage(imgObj, 0, 0, 300, 150);
+          if (img.text) {
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            ctx.fillRect(img.textX, img.textY, ctx.measureText(img.text).width + 12, 24);
+            ctx.fillStyle = 'white';
+            ctx.font = '18px Inter';
+            ctx.fillText(img.text, img.textX, img.textY + 18);
+          }
+          img.drawPaths.forEach(path => {
+            ctx.beginPath();
+            ctx.moveTo(path[0].x * (300 / window.innerWidth), path[0].y * (150 / window.innerHeight));
+            path.slice(1).forEach(point => {
+              ctx.lineTo(point.x * (300 / window.innerWidth), point.y * (150 / window.innerHeight));
+            });
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          });
+        };
+        const thumbnail = document.createElement('img');
+        thumbnail.src = img.data;
+        thumbnail.className = 'image-preview w-24 h-24';
+        thumbnail.onclick = () => showImageModal(img.data);
+        wrapper.appendChild(thumbnail);
+        wrapper.appendChild(canvas);
+        container.appendChild(wrapper);
+      });
+    }
+
+    function renderFullscreenCanvas() {
+      if (!fullscreenCanvas || images.length === 0 || document.getElementById('image-tab').classList.contains('hidden')) return;
+      const ctx = fullscreenCanvas.getContext('2d');
+      ctx.clearRect(0, 0, fullscreenCanvas.width, fullscreenCanvas.height);
+      const img = images[images.length - 1];
+      const imgObj = new Image();
+      imgObj.src = img.data;
+      imgObj.onload = () => {
+        const aspectRatio = imgObj.width / imgObj.height;
+        let drawWidth = fullscreenCanvas.width;
+        let drawHeight = drawWidth / aspectRatio;
+        if (drawHeight > fullscreenCanvas.height) {
+          drawHeight = fullscreenCanvas.height;
+          drawWidth = drawHeight * aspectRatio;
+        }
+        const offsetX = (fullscreenCanvas.width - drawWidth) / 2;
+        const offsetY = (fullscreenCanvas.height - drawHeight) / 2;
+        ctx.drawImage(imgObj, offsetX, offsetY, drawWidth, drawHeight);
+        if (img.text) {
+          ctx.fillStyle = 'rgba(0,0,0,0.4)';
+          ctx.fillRect(
+            img.textX * (drawWidth / imgObj.width) + offsetX,
+            img.textY * (drawHeight / imgObj.height) + offsetY,
+            ctx.measureText(img.text).width + 12,
+            24
+          );
+          ctx.fillStyle = 'white';
+          ctx.font = '24px Inter';
+          ctx.fillText(
+            img.text,
+            img.textX * (drawWidth / imgObj.width) + offsetX,
+            img.textY * (drawHeight / imgObj.height) + offsetY + 18
+          );
+        }
+        img.drawPaths.forEach(path => {
+          ctx.beginPath();
+          ctx.moveTo(
+            path[0].x * (drawWidth / window.innerWidth) + offsetX,
+            path[0].y * (drawHeight / window.innerHeight) + offsetY
+          );
+          path.slice(1).forEach(point => {
+            ctx.lineTo(
+              point.x * (drawWidth / window.innerWidth) + offsetX,
+              point.y * (drawHeight / window.innerHeight) + offsetY
+            );
+         } );
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        });
+      };
+    }
+
+    const imageModal = document.getElementById('imageModal');
+    const modalImage = document.getElementById('modalImage');
+    function showImageModal(data) {
+      modalImage.src = data;
+      imageModal.style.display = 'flex';
+    }
+    imageModal.addEventListener('click', (e) => {
+      if (e.target === imageModal) imageModal.style.display = 'none';
+    });
+
+    function enableTextMode() {
+      if (images.length === 0) {
+        showMessage('Сначала добавьте изображение!');
+        return;
+      }
+      textMode = true;
+      drawMode = false;
+      removeDrawEventListeners();
+      addTextEventListener();
+      showMessage('Кликните на изображении, чтобы добавить текст.');
+    }
+
+    function enableDrawMode() {
+      if (images.length === 0) {
+        showMessage('Сначала добавьте изображение!');
+        return;
+      }
+      textMode = false;
+      drawMode = true;
+      removeTextEventListener();
+      addDrawEventListeners();
+      showMessage('Рисуйте на изображении с помощью мыши.');
+    }
+
+    function addTextEventListener() {
+      if (fullscreenCanvas) {
+        fullscreenCanvas.removeEventListener('click', handleTextClick); // Prevent multiple listeners
+        fullscreenCanvas.addEventListener('click', handleTextClick);
+      }
+    }
+
+    function removeTextEventListener() {
+      if (fullscreenCanvas) {
+        fullscreenCanvas.removeEventListener('click', handleTextClick);
+      }
+    }
+
+    function handleTextClick(e) {
+      if (textMode && images.length > 0) {
+        const rect = fullscreenCanvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const img = images[images.length - 1];
+        const imgObj = new Image();
+        imgObj.src = img.data;
+        imgObj.onload = () => {
+          const aspectRatio = imgObj.width / imgObj.height;
+          let drawWidth = fullscreenCanvas.width;
+          let drawHeight = drawWidth / aspectRatio;
+          if (drawHeight > fullscreenCanvas.height) {
+            drawHeight = fullscreenCanvas.height;
+            drawWidth = drawHeight * aspectRatio;
+          }
+          const offsetX = (fullscreenCanvas.width - drawWidth) / 2;
+          const offsetY = (fullscreenCanvas.height - drawHeight) / 2;
+          img.text = document.getElementById('canvasTextInput').value || 'Текст';
+          img.textX = (x - offsetX) * (imgObj.width / drawWidth);
+          img.textY = (y - offsetY) * (imgObj.height / drawHeight);
+          renderImages();
+          renderFullscreenCanvas();
+        };
+      }
+    }
+
+    function addDrawEventListeners() {
+      if (fullscreenCanvas) {
+        fullscreenCanvas.removeEventListener('mousedown', handleDrawStart);
+        fullscreenCanvas.removeEventListener('mousemove', handleDrawMove);
+        fullscreenCanvas.removeEventListener('mouseup', handleDrawEnd);
+        fullscreenCanvas.removeEventListener('mouseout', handleDrawEnd);
+        fullscreenCanvas.addEventListener('mousedown', handleDrawStart);
+        fullscreenCanvas.addEventListener('mousemove', handleDrawMove);
+        fullscreenCanvas.addEventListener('mouseup', handleDrawEnd);
+        fullscreenCanvas.addEventListener('mouseout', handleDrawEnd);
+      }
+    }
+
+    function removeDrawEventListeners() {
+      if (fullscreenCanvas) {
+        fullscreenCanvas.removeEventListener('mousedown', handleDrawStart);
+        fullscreenCanvas.removeEventListener('mousemove', handleDrawMove);
+        fullscreenCanvas.removeEventListener('mouseup', handleDrawEnd);
+        fullscreenCanvas.removeEventListener('mouseout', handleDrawEnd);
+      }
+    }
+
+    function handleDrawStart(e) {
+      if (drawMode && images.length > 0) {
+        isDrawing = true;
+        currentPath = [{ x: e.clientX, y: e.clientY }];
+        images[images.length - 1].drawPaths.push(currentPath);
+      }
+    }
+
+    function handleDrawMove(e) {
+      if (drawMode && isDrawing) {
+        currentPath.push({ x: e.clientX, y: e.clientY });
+        renderFullscreenCanvas();
+      }
+    }
+
+    function handleDrawEnd() {
+      if (drawMode) {
+        isDrawing = false;
+        currentPath = [];
+        renderImages();
+      }
+    }
+
+    function deleteImages() {
+      if (images.length > 0) {
+        images = [];
+        document.getElementById('imageContainer').innerHTML = '';
+        if (fullscreenCanvas) {
+          fullscreenCanvas.getContext('2d').clearRect(0, 0, fullscreenCanvas.width, fullscreenCanvas.height);
+        }
+        showMessage('Изображения удалены.');
+      } else {
+        showMessage('Нет загруженных изображений.');
+      }
+    }
+
+    function exportToPDF() {
+      if (images.length === 0) {
+        showMessage('Нет изображений для экспорта!');
+        return;
+      }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ format: 'a4', orientation: 'portrait' });
+      let loadedImages = 0;
+      images.forEach((img, index) => {
+        const imgObj = new Image();
+        imgObj.src = img.data;
+        imgObj.onload = () => {
+          if (index > 0) doc.addPage();
+          const aspectRatio = imgObj.width / imgObj.height;
+          let width = 180;
+          let height = width / aspectRatio;
+          if (height > 260) {
+            height = 260;
+            width = height * aspectRatio;
+          }
+          const x = (210 - width) / 2;
+          const y = (297 - height) / 2;
+          doc.addImage(img.data, 'PNG', x, y, width, height);
+          if (img.text) {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(12);
+            doc.setTextColor(255, 255, 255);
+            doc.setFillColor(0, 0, 0, 0.4);
+            doc.rect(x + img.textX * (width / imgObj.width), y + img.textY * (height / imgObj.height), doc.getTextWidth(img.text) + 8, 12, 'F');
+            doc.text(img.text, x + img.textX * (width / imgObj.width), y + img.textY * (height / imgObj.height) + 9);
+          }
+          img.drawPaths.forEach(path => {
+            doc.setDrawColor(0, 0, 0);
+            doc.setLineWidth(0.5);
+            doc.moveTo(
+              x + path[0].x * (width / window.innerWidth),
+              y + path[0].y * (height / window.innerHeight)
+            );
+            path.slice(1).forEach(point => {
+              doc.lineTo(
+                x + point.x * (width / window.innerWidth),
+                y + point.y * (height / window.innerHeight)
+              );
+            });
+            doc.stroke();
+          });
+          loadedImages++;
+          if (loadedImages === images.length) {
+            doc.save('images.pdf');
+            showMessage('Документ сохранен как PDF.');
+          }
+        };
+      });
+    }
+
+    function shareToTelegram() {
+      if (images.length === 0) {
+        showMessage('Нет изображений для отправки!');
+        return;
+      }
+      const img = images[images.length - 1];
+      const canvas = document.createElement('canvas');
+      canvas.width = 800;
+      canvas.height = 600;
+      const ctx = canvas.getContext('2d');
+      const imgObj = new Image();
+      imgObj.src = img.data;
+      imgObj.onload = () => {
+        const aspectRatio = imgObj.width / imgObj.height;
+        let drawWidth = 800;
+        let drawHeight = drawWidth / aspectRatio;
+        if (drawHeight > 600) {
+          drawHeight = 600;
+          drawWidth = drawHeight * aspectRatio;
+        }
+        const offsetX = (800 - drawWidth) / 2;
+        const offsetY = (600 - drawHeight) / 2;
+        ctx.drawImage(imgObj, offsetX, offsetY, drawWidth, drawHeight);
+        if (img.text) {
+          ctx.fillStyle = 'rgba(0,0,0,0.4)';
+          ctx.fillRect(
+            offsetX + img.textX * (drawWidth / imgObj.width),
+            offsetY + img.textY * (drawHeight / imgObj.height),
+            ctx.measureText(img.text).width + 12,
+            24
+          );
+          ctx.fillStyle = 'white';
+          ctx.font = '24px Inter';
+          ctx.fillText(
+            img.text,
+            offsetX + img.textX * (drawWidth / imgObj.width),
+            offsetY + img.textY * (drawHeight / imgObj.height) + 18
+          );
+        }
+        img.drawPaths.forEach(path => {
+          ctx.beginPath();
+          ctx.moveTo(
+            offsetX + path[0].x * (drawWidth / window.innerWidth),
+            offsetY + path[0].y * (drawHeight / window.innerHeight)
+          );
+          path.slice(1).forEach(point => {
+            ctx.lineTo(
+              offsetX + point.x * (drawWidth / window.innerWidth),
+              offsetY + point.y * (drawHeight / window.innerHeight)
+            );
+         } );
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        });
+        const dataUrl = canvas.toDataURL('image/png');
+        const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(dataUrl)}&text=${encodeURIComponent('Check out this image!')}`;
+        window.open(telegramUrl, '_blank');
+        showMessage('Открыт Telegram для отправки изображения.');
+      };
+    }
+
+    function showMessage(text) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.textContent = text;
+      messageDiv.style.display = 'block';
+      setTimeout(() => {
+        messageDiv.style.display = 'none';
+      }, 3000);
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      initializeHandsontable();
+      showTab('excel-tab');
+    });
+  </script>
+</body>
+</html>
